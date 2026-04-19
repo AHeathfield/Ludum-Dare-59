@@ -1,36 +1,60 @@
 // This is a simple ECS
 const std = @import("std");
-const comps = @import("Components/components.zig");
+const Entity = @import("entity.zig").Entity;
+const System = @import("Systems/system.zig").System;
+const Components = @import("Components/components.zig").Components;
 const expect = std.testing.expect;
 
-// This stores all the entities and has methods to create and get them and add components
 pub const ECS = struct {
-    allocator: std.mem.Allocator,
+    arena: std.heap.ArenaAllocator,
     entity_count: u32 = 0,
     entities: std.AutoHashMap(u32, Entity),
     systems: std.ArrayList(System),
 
+    // Allows me to choose the specific allocator
     pub fn init(allocator: std.mem.Allocator) ECS {
+        const arena = std.heap.ArenaAllocator.init(allocator);
+
         return .{
-            .allocator = allocator,
+            .arena = arena,
             .entities = std.AutoHashMap(u32, Entity).init(allocator),
             .systems = std.ArrayList(System).empty,
         };
     }
 
-    pub fn deinit(self: *ECS) void {
-        self.entities.deinit();
-        self.systems.deinit(self.allocator);
+    pub fn initSystems(self: *ECS) void {
+        for (self.systems.items) |sys| {
+            sys.init();
+        }
     }
 
-    pub fn createEntity(self: *ECS) !Entity {
+    pub fn deinit(self: *ECS) void {
+        for (self.systems.items) |sys| {
+            sys.deinit();
+        }
+        self.entities.deinit();
+        self.systems.deinit(self.arena.allocator());
+        self.arena.deinit();
+    }
+
+    pub fn update(self: *ECS, delta_time: f32) !void {
+        for (self.systems.items) |system| {
+            try system.update(delta_time);
+        }
+    }
+
+    pub fn addSystem(self: *ECS, system: System) !void {
+        try self.systems.append(self.getAllocator(), system);
+    }
+
+    pub fn createEntity(self: *ECS) !*Entity {
         const ent: Entity = .{
             .eid = self.entity_count,
         };
 
         try self.entities.put(ent.eid, ent);
         self.entity_count += 1;
-        return ent;
+        return self.entities.getPtr(ent.eid).?;
     }
 
     pub fn destroyEntity(self: *ECS, eid: u32) bool {
@@ -41,51 +65,53 @@ pub const ECS = struct {
         return self.entities.getPtr(eid);
     }
 
-    pub fn addComponent(self: *ECS, entity: *Entity, component: anytype) bool {
-        _ = self;
-        const current_comps: Components = entity.*.components;
-        var new_component = @constCast(&component);
-        _ = &new_component;
+    pub fn getAllocator(self: *ECS) std.mem.Allocator {
+        return self.arena.allocator();
+    }
 
-        inline for (std.meta.fields(@TypeOf(current_comps))) |f| {
-            if (std.meta.eql(f.type, ?@TypeOf(new_component))) {
-                @field(entity.*.components, f.name) = new_component;
-                // std.debug.print("The component should be added!\n", .{});
-                return true;
+    pub fn addComponent(self: *ECS, entity: *Entity, component: anytype) !bool {
+        const component_type = @TypeOf(component);
+        inline for (std.meta.fields(Components)) |f| {
+            if (@typeInfo(f.type) == .optional) {
+                const current_component_type = @typeInfo(f.type).optional.child;
+                if (current_component_type == component_type) {
+                    @field(entity.components, f.name) = component;
+
+                    // This notifies systems of a change in an entity
+                    for (self.systems.items) |system| {
+                        try system.addEntity(entity.eid);
+                    }
+                    return true;
+                }
             }
         }
-
         return false;
     }
-};
-
-const Components = struct {
-    position_2d: ?*comps.Position2D = null,
-};
-
-pub const Entity = struct {
-    eid: u32,
-    components: Components = .{},
-};
-
-// System interface
-pub const System = struct {
-    ptr: *anyopaque,
-    impl: *const Interface,
-
-    // ctx = context :)
-    pub const Interface = struct {
-        update: *const fn (ctx: *anyopaque, delta_time: f32) void,
-        add_entity: *const fn (ctx: *anyopaque, eid: u32) void,
-    };
-
-    pub fn update(self: System, delta_time: f32) void {
-        return self.impl.update(self.ptr, delta_time);
-    }
-
-    pub fn add_entity(self: System, eid: u32) void {
-        return self.impl.add_entity(self.ptr, eid);
-    }
+    // This is how I would with optional pointers, I'm just going to use values
+    // const component_ptr = @constCast(component);
+    // const component_type = @TypeOf(component_ptr);
+    // std.debug.print("Component type: {}\n", .{component_type});
+    //
+    // inline for (std.meta.fields(Components)) |f| {
+    //     const field_type = f.type;
+    //     std.debug.print("Field: {s}, type: {}\n", .{ f.name, field_type });
+    //
+    //     // If field is optional and its child matches the component type
+    //     if (@typeInfo(field_type) == .optional) {
+    //         const child_type = @typeInfo(field_type).optional.child;
+    //         std.debug.print("Optional Child type: {}\n", .{child_type});
+    //
+    //         if (child_type == component_type) {
+    //             // Assign directly - Zig handles the optional wrapping
+    //             @field(entity.*.components, f.name) = component_ptr;
+    //             for (self.systems.items) |system| {
+    //                 try system.addEntity(entity.*);
+    //             }
+    //         }
+    //         return true;
+    //     }
+    // }
+    // return false;
 };
 
 // =================== TESTS ===================
@@ -121,16 +147,16 @@ test "get entity by id" {
 }
 
 test "adding component" {
+    const Transform2 = @import("Components/transform2.zig").Transform2;
     var ecs: ECS = ECS.init(std.testing.allocator);
     defer ecs.deinit();
 
-    const pos: comps.Position2D = .{
-        .x = 10.0,
-        .y = 0.0,
+    const transform_2d: Transform2 = .{
+        .pos = .{ .x = 10.0, .y = 0.0 },
     };
 
     var ent: Entity = try ecs.createEntity();
-    try expect(ecs.addComponent(&ent, pos));
-    try expect(ent.components.position_2d != null);
-    try expect(ent.components.position_2d.?.x == 10.0);
+    try expect(try ecs.addComponent(&ent, transform_2d));
+    try expect(ent.components.transform_2d != null);
+    try expect(ent.components.transform_2d.?.pos.x == 10.0);
 }
