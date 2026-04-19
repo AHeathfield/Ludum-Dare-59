@@ -2,8 +2,6 @@ const std = @import("std");
 const Entity = @import("../entity.zig").Entity;
 const ECS = @import("../ecs.zig").ECS;
 
-pub const RenderSystem = @import("render_sys.zig").RenderSystem;
-
 // System interface
 pub const System = struct {
     ptr: *anyopaque,

@@ -3,7 +3,7 @@
 const rl = @import("raylib");
 const std = @import("std");
 const ECS = @import("ecs.zig").ECS;
-const systems = @import("Systems/system.zig");
+const systems = @import("Systems/all_systems.zig");
 const Color = rl.Color;
 const expect = std.testing.expect;
 
@@ -33,6 +33,7 @@ pub fn main() anyerror!void {
     // Test entities
     const Transform2 = @import("Components/transform2.zig").Transform2;
     const Texture = @import("Components/texture.zig").Texture;
+    const Timer = @import("Components/timer.zig").Timer;
     const Entity = @import("entity.zig").Entity;
 
     const ent: *Entity = try ecs.createEntity();
@@ -43,6 +44,13 @@ pub fn main() anyerror!void {
         .pos = rl.Vector2{ .x = 50.0, .y = 50.0 },
         .rot = 45.0,
     });
+    _ = try ecs.addComponent(ent, Timer{
+        .max_time = 10.0,
+        .on_start = onTimerStart,
+        .on_timeout = onTimerEnd,
+    });
+
+    ecs.getEntity(0).?.components.timer.?.play();
 
     // Main game loop
     while (!rl.windowShouldClose()) { // Detect window close button or ESC key
@@ -77,19 +85,31 @@ pub fn main() anyerror!void {
     rl.closeWindow();
 }
 
-// NOTE: THE LAST SYSTEM ADDED SHOULD BE RENDER SYSTEM!!!
 fn setupSystems(ecs: *ECS) !void {
     const allocator = ecs.getAllocator();
 
-    // Create on HEAP instead of stack or else the actual render system will be destroyed
-    // The pointer to the actual render system is what the ecs stores
-    // (render_sys is a pointer)
+    // Create on HEAP instead of stack or else the actual system will be
+    // destroyed. The pointer to the actual system is what the ecs stores
+    const timer_sys = try allocator.create(systems.TimerSystem);
+    timer_sys.* = systems.TimerSystem{ .ecs = ecs, .ents = std.AutoHashMap(u32, void).init(allocator) };
+
     const render_sys = try allocator.create(systems.RenderSystem);
     render_sys.* = systems.RenderSystem{ .ecs = ecs, .ents = std.AutoHashMap(u32, void).init(allocator), .textures = std.StringHashMap(rl.Texture).init(allocator) };
 
     // Adding systems in correct order
+    // NOTE: THE LAST SYSTEM ADDED SHOULD BE RENDER SYSTEM!!!
+    try ecs.addSystem(systems.TimerSystem.create(timer_sys));
     try ecs.addSystem(systems.RenderSystem.create(render_sys));
 
     // Calls the init func on all systems
     ecs.initSystems();
+}
+
+// TEST FUNCS FOR TIMER
+pub fn onTimerStart() void {
+    std.debug.print("Timer started!!\n", .{});
+}
+
+pub fn onTimerEnd() void {
+    std.debug.print("Timer ended!!\n", .{});
 }
