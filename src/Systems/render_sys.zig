@@ -26,6 +26,7 @@ pub const RenderSystem = struct {
         // it can be unloaded from RAM
         rl.unloadImage(image);
         try self.textures.put(img_path, texture);
+        std.debug.print("Creating texture: {s}\n", .{img_path});
         return texture;
     }
 

@@ -3,9 +3,13 @@
 const rl = @import("raylib");
 const std = @import("std");
 const ECS = @import("ecs.zig").ECS;
+const SceneManager = @import("Scenes/scene_manager.zig").SceneManager;
 const systems = @import("Systems/all_systems.zig");
 const Color = rl.Color;
 const expect = std.testing.expect;
+
+// Might be temp
+const PlayerScene = @import("Scenes/player_scn.zig").PlayerScene;
 
 pub fn main() anyerror!void {
     // Initialization
@@ -30,32 +34,37 @@ pub fn main() anyerror!void {
     var ecs: ECS = ECS.init(allocator);
     try setupSystems(&ecs);
 
+    // Setting up SceneManager
+    var scn_mgr: SceneManager = SceneManager.init(ecs.getAllocator());
+
+    try scn_mgr.addScene(PlayerScene.create(@constCast(&PlayerScene.setup(&ecs, ecs.getAllocator()))));
+
+    // try scn_mgr.addScene(PlayerScene.create(@constCast(&PlayerScene{
+    //     .ecs = &ecs,
+    //     .ents = std.AutoHashMap(u32, void).init(ecs.getAllocator()),
+    // })));
+
     // Test entities
-    const Transform2 = @import("Components/transform2.zig").Transform2;
-    const Texture = @import("Components/texture.zig").Texture;
-    const Timer = @import("Components/timer.zig").Timer;
-    const Entity = @import("entity.zig").Entity;
+    // const Transform2 = @import("Components/transform2.zig").Transform2;
+    // const Texture = @import("Components/texture.zig").Texture;
+    // const Timer = @import("Components/timer.zig").Timer;
+    // const Entity = @import("entity.zig").Entity;
 
-    const ent: *Entity = try ecs.createEntity();
-    _ = try ecs.addComponent(ent, Texture{
-        .img_path = "resources/test.png",
-    });
-    _ = try ecs.addComponent(ent, Transform2{
-        .pos = rl.Vector2{ .x = 50.0, .y = 50.0 },
-        .rot = 45.0,
-    });
-    _ = try ecs.addComponent(ent, Timer{
-        .max_time = 10.0,
-        .on_start = onTimerStart,
-        .on_timeout = onTimerEnd,
-    });
+    // _ = try ecs.addComponent(ent, Timer{
+    //     .max_time = 10.0,
+    //     .on_start = onTimerStart,
+    //     .on_timeout = onTimerEnd,
+    // });
 
-    ecs.getEntity(0).?.components.timer.?.play();
+    // ecs.getEntity(0).?.components.timer.?.play();
 
     // Main game loop
     while (!rl.windowShouldClose()) { // Detect window close button or ESC key
+        const delta_time: f32 = rl.getFrameTime();
+
         // Update
-        try ecs.update(rl.getFrameTime());
+        try scn_mgr.update(delta_time);
+        try ecs.update(delta_time);
 
         // Draw
         //----------------------------------------------------------------------------------
@@ -81,6 +90,7 @@ pub fn main() anyerror!void {
     }
 
     // Deinits
+    scn_mgr.deinit();
     ecs.deinit();
     rl.closeWindow();
 }
