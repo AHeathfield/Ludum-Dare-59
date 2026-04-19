@@ -34,14 +34,14 @@ pub fn main() anyerror!void {
     const Transform2 = @import("Components/transform2.zig").Transform2;
     const Texture = @import("Components/texture.zig").Texture;
     const Entity = @import("entity.zig").Entity;
-    const Vec2I = @import("Math/vec2.zig").Vec2I;
 
     const ent: *Entity = try ecs.createEntity();
     _ = try ecs.addComponent(ent, Texture{
         .img_path = "resources/test.png",
     });
     _ = try ecs.addComponent(ent, Transform2{
-        .pos = Vec2I{ .x = 50, .y = 50 },
+        .pos = rl.Vector2{ .x = 50.0, .y = 50.0 },
+        .rot = 45.0,
     });
 
     // Main game loop

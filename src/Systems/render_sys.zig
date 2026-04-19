@@ -79,12 +79,12 @@ pub const RenderSystem = struct {
             }
 
             const texture: rl.Texture = try self.getTexture(texture_comp.?.img_path);
-            const pos = transform_comp.?.pos;
 
-            rl.drawTexture(
+            rl.drawTextureEx(
                 texture,
-                pos.x,
-                pos.y,
+                transform_comp.?.pos,
+                transform_comp.?.rot,
+                transform_comp.?.scale,
                 Color.white,
             );
         }
